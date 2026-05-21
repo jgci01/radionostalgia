@@ -33,7 +33,6 @@ export default function Home() {
           {/* RSS News Feed widget */}
           <div className="w-full">
             {/* Server component resolved on compilation/ISR */}
-            {/* @ts-expect-error Async Server Component */}
             <NewsFeed />
           </div>
         </div>
