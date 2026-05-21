@@ -58,14 +58,7 @@ export default function Player() {
             data-channelid="" 
             data-rendered="false"
           >
-            <a 
-              href="https://www.caster.fm" 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="text-xs text-zinc-600 hover:text-cyan-400 transition-colors font-medium"
-            >
-              Shoutcast Hosting
-            </a>
+            <a href="https://www.caster.fm">Shoutcast Hosting</a> <a href="https://www.caster.fm">Stream Hosting</a> <a href="https://www.caster.fm">Radio Server Hosting</a>
           </div>
         </div>
         
