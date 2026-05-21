@@ -41,7 +41,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="w-full max-w-4xl border-t border-zinc-900/60 mt-16 pt-6 text-center select-none z-10">
         <p className="text-[10px] text-zinc-500 tracking-widest uppercase font-medium">
-          © {new Date().getFullYear()} Radio Nostalgia Digital • Mendoza, Argentina • Todos los derechos reservados.
+          © {new Date().getFullYear()} Radio Nostalgia Digital • <a href="https://tepuyfactory.com/" target="_blank" rel="noopener noreferrer" className="hover:text-cyan-400 transition-colors font-semibold">TepuyFactory</a> • Mendoza, Argentina • Todos los derechos reservados.
         </p>
       </footer>
     </div>
