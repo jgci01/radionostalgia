@@ -66,6 +66,32 @@ export default function Player() {
         <p className="text-[10px] text-zinc-500 text-center tracking-wider italic">
           Si la reproducción no inicia automáticamente, por favor presione el botón Play.
         </p>
+
+        {/* Alternative Links */}
+        <div className="pt-4 border-t border-zinc-800/50 flex flex-col items-center mt-6">
+          <span className="text-[10px] text-zinc-400 uppercase tracking-widest font-semibold mb-3">Escúchanos también en:</span>
+          <div className="flex items-center space-x-4 w-full justify-center">
+            <a 
+              href="https://nostalgiadigital.radio12345.com/" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="px-4 py-2 bg-zinc-800/50 hover:bg-cyan-950/40 border border-zinc-700/50 hover:border-cyan-500/30 rounded-lg text-xs font-medium text-zinc-300 hover:text-cyan-400 transition-all duration-300 shadow-sm"
+            >
+              Web Player
+            </a>
+            <a 
+              href="https://www.twitch.tv/nostalgiadigital" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="px-4 py-2 bg-zinc-800/50 hover:bg-[#6441a5]/20 border border-zinc-700/50 hover:border-[#6441a5]/50 rounded-lg text-xs font-medium text-zinc-300 hover:text-[#a970ff] transition-all duration-300 shadow-sm flex items-center space-x-1.5"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
+                <path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z" />
+              </svg>
+              <span>Twitch</span>
+            </a>
+          </div>
+        </div>
       </div>
 
       {/* Script Ingestion with Safety Lifecycle Handler */}
