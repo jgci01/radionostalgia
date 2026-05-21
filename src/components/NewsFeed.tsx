@@ -24,28 +24,35 @@ const FALLBACK_NEWS: NewsItem[] = [
     title: 'El auge del vinilo y el coleccionismo de clásicos musicales en la era digital',
     link: 'https://www.lanacion.com.ar',
     relativeTime: 'Hace 2 horas',
-    sourceName: 'Radio Nostalgia',
+    sourceName: 'La Nación',
     timestamp: Date.now() - 7200000,
   },
   {
     title: 'Mendoza se consolida como el destino preferido para los amantes del buen vino y la música',
     link: 'https://www.mdzol.com',
     relativeTime: 'Hace 4 horas',
-    sourceName: 'Radio Nostalgia',
+    sourceName: 'MDZ Online',
     timestamp: Date.now() - 14400000,
   },
   {
     title: 'La nostalgia en los medios digitales: por qué seguimos buscando el sonido de los años 80 y 90',
     link: 'https://www.infobae.com',
     relativeTime: 'Hace 6 horas',
-    sourceName: 'Radio Nostalgia',
+    sourceName: 'Infobae',
     timestamp: Date.now() - 21600000,
+  },
+  {
+    title: 'Reportaje: La historia de la radiofonía latinoamericana',
+    link: 'http://www.el-nacional.com',
+    relativeTime: 'Hace 7 horas',
+    sourceName: 'El Nacional',
+    timestamp: Date.now() - 25200000,
   },
   {
     title: 'Nuevas tecnologías de streaming permiten transmisiones de audio de alta fidelidad',
     link: 'https://www.biobiochile.cl',
     relativeTime: 'Hace 8 horas',
-    sourceName: 'Radio Nostalgia',
+    sourceName: 'Radio Bío Bío',
     timestamp: Date.now() - 28800000,
   },
 ];
@@ -106,7 +113,14 @@ export default async function NewsFeed() {
           sourceName: feedName,
           timestamp: parseDateSafely(item.pubDate),
         }));
-        allNewsItems.push(...feedItems);
+        
+        // Sort items from this specific source by newest first
+        feedItems.sort((a, b) => b.timestamp - a.timestamp);
+        
+        // Take ONLY the single freshest article from this source
+        if (feedItems.length > 0) {
+          allNewsItems.push(feedItems[0]);
+        }
       }
     });
 
@@ -114,10 +128,9 @@ export default async function NewsFeed() {
     console.error('Critical error processing RSS feeds:', error);
   }
 
-  // If we got valid items, sort them by newest first. Otherwise use fallback.
+  // Sort the final 5 items (one from each source) by newest first across all sources
   if (allNewsItems.length > 0) {
     allNewsItems.sort((a, b) => b.timestamp - a.timestamp);
-    // Remove items with invalid timestamps if they end up sorting weirdly
     allNewsItems = allNewsItems.filter(item => item.timestamp > 0);
   }
 
@@ -126,8 +139,8 @@ export default async function NewsFeed() {
     allNewsItems = FALLBACK_NEWS;
   }
 
-  // Take exactly top 4
-  const displayItems = allNewsItems.slice(0, 4);
+  // Take exactly 5 items
+  const displayItems = allNewsItems.slice(0, 5);
 
   return (
     <div className="w-full bg-zinc-900/40 backdrop-blur-md border border-zinc-800/80 rounded-2xl p-6 md:p-8 shadow-2xl transition-all duration-300 hover:border-cyan-500/20">
