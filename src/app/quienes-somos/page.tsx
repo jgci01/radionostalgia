@@ -86,7 +86,7 @@ export default function QuienesSomos() {
             <div className="relative w-56 h-56 md:w-64 md:h-64 rounded-2xl overflow-hidden border border-zinc-700/50 group hover:border-cyan-500/40 transition-colors duration-500 shadow-xl shadow-cyan-950/10">
               <div className="absolute inset-0 bg-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-10 pointer-events-none"></div>
               <Image 
-                src="/locutor.jpg" 
+                src="/locutor.png" 
                 alt="Creador y Locutor de Radio Nostalgia Digital" 
                 fill 
                 className="object-cover transition-transform duration-700 group-hover:scale-105"
