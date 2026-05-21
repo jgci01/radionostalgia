@@ -15,7 +15,7 @@ const RSS_FEEDS = [
   { name: 'MDZ Online', url: 'https://www.mdzol.com/files/rss/todoslostitulos.xml' },
   { name: 'Infobae', url: 'https://www.infobae.com/feeds/rss' },
   { name: 'El Nacional', url: 'http://www.el-nacional.com/rss/' },
-  { name: 'Radio Bío Bío', url: 'http://www.radiobiobio.cl/feed/' }
+  { name: 'Radio Bío Bío', url: 'https://www.biobiochile.cl/portada/feed/' }
 ];
 
 // Fallback items in case all RSS feeds fail
@@ -91,6 +91,7 @@ export default async function NewsFeed() {
 
   const parser = new Parser({
     timeout: 5000, // 5 seconds timeout to guarantee fast page loads
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
   });
 
   try {
@@ -128,18 +129,19 @@ export default async function NewsFeed() {
     console.error('Critical error processing RSS feeds:', error);
   }
 
-  // Sort the final 5 items (one from each source) by newest first across all sources
+  // Sort the final live items by newest first across all sources
   if (allNewsItems.length > 0) {
     allNewsItems.sort((a, b) => b.timestamp - a.timestamp);
     allNewsItems = allNewsItems.filter(item => item.timestamp > 0);
   }
 
-  // If still empty or filtered to 0, use fallback
-  if (allNewsItems.length === 0) {
-    allNewsItems = FALLBACK_NEWS;
+  // If we couldn't get exactly 5 items (due to offline sources), fill the rest with fallbacks
+  if (allNewsItems.length < 5) {
+    const missingCount = 5 - allNewsItems.length;
+    allNewsItems = [...allNewsItems, ...FALLBACK_NEWS.slice(0, missingCount)];
   }
 
-  // Take exactly 5 items
+  // Take exactly 5 items for the UI
   const displayItems = allNewsItems.slice(0, 5);
 
   return (
