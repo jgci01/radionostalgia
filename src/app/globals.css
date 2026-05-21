@@ -1,26 +1,60 @@
 @import "tailwindcss";
 
+@theme {
+  --color-brand-cyan: #06709F;
+  --animate-spin-slow: spin 16s linear infinite;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --background: #030712; /* Slate-950 */
+  --foreground: #f4f4f5; /* Zinc-100 */
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100vh;
+  overflow-y: auto;
+}
+
+/* Custom premium scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #030712;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #18181b;
+  border-radius: 9999px;
+  border: 2px solid #030712;
+  transition: background 0.3s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #06709F;
+}
+
+/* Custom keyframes & classes for micro-animations */
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 0.15;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.25;
+    transform: scale(1.05);
+  }
+}
+
+.ambient-glow {
+  animation: pulse-glow 8s ease-in-out infinite;
+}
+
+/* Clean divider color for news feed lines */
+.divide-zinc-850 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgba(39, 39, 42, 0.5);
 }
