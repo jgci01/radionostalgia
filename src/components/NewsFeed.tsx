@@ -6,29 +6,47 @@ interface NewsItem {
   link: string;
   pubDate?: string;
   relativeTime: string;
+  sourceName: string;
+  timestamp: number;
 }
 
-// Fallback items in case RSS fails
+const RSS_FEEDS = [
+  { name: 'La Nación', url: 'https://servicios.lanacion.com.ar/winformatos/rss/canal/categoria=7793' },
+  { name: 'MDZ Online', url: 'https://www.mdzol.com/files/rss/todoslostitulos.xml' },
+  { name: 'Infobae', url: 'https://www.infobae.com/feeds/rss' },
+  { name: 'El Nacional', url: 'http://www.el-nacional.com/rss/' },
+  { name: 'Radio Bío Bío', url: 'http://www.radiobiobio.cl/feed/' }
+];
+
+// Fallback items in case all RSS feeds fail
 const FALLBACK_NEWS: NewsItem[] = [
   {
     title: 'El auge del vinilo y el coleccionismo de clásicos musicales en la era digital',
     link: 'https://www.lanacion.com.ar',
     relativeTime: 'Hace 2 horas',
+    sourceName: 'Radio Nostalgia',
+    timestamp: Date.now() - 7200000,
   },
   {
     title: 'Mendoza se consolida como el destino preferido para los amantes del buen vino y la música',
-    link: 'https://www.lanacion.com.ar',
+    link: 'https://www.mdzol.com',
     relativeTime: 'Hace 4 horas',
+    sourceName: 'Radio Nostalgia',
+    timestamp: Date.now() - 14400000,
   },
   {
     title: 'La nostalgia en los medios digitales: por qué seguimos buscando el sonido de los años 80 y 90',
-    link: 'https://www.lanacion.com.ar',
+    link: 'https://www.infobae.com',
     relativeTime: 'Hace 6 horas',
+    sourceName: 'Radio Nostalgia',
+    timestamp: Date.now() - 21600000,
   },
   {
-    title: 'Nuevas tecnologías de streaming permiten transmisiones de audio de alta fidelidad sin interrupciones',
-    link: 'https://www.lanacion.com.ar',
+    title: 'Nuevas tecnologías de streaming permiten transmisiones de audio de alta fidelidad',
+    link: 'https://www.biobiochile.cl',
     relativeTime: 'Hace 8 horas',
+    sourceName: 'Radio Nostalgia',
+    timestamp: Date.now() - 28800000,
   },
 ];
 
@@ -40,61 +58,76 @@ function getRelativeTime(dateString?: string): string {
     if (isNaN(past.getTime())) return 'Hace unas horas';
     
     const diffMs = now.getTime() - past.getTime();
-    
-    // Safety check for future dates or slight clock drift
     if (diffMs < 0) return 'Hace un momento';
     
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffHours / 24);
 
-    if (diffDays > 0) {
-      return `Hace ${diffDays} ${diffDays === 1 ? 'día' : 'días'}`;
-    }
-    if (diffHours > 0) {
-      return `Hace ${diffHours} ${diffHours === 1 ? 'hora' : 'horas'}`;
-    }
-    if (diffMins > 0) {
-      return `Hace ${diffMins} ${diffMins === 1 ? 'minuto' : 'minutos'}`;
-    }
+    if (diffDays > 0) return `Hace ${diffDays} ${diffDays === 1 ? 'día' : 'días'}`;
+    if (diffHours > 0) return `Hace ${diffHours} ${diffHours === 1 ? 'hora' : 'horas'}`;
+    if (diffMins > 0) return `Hace ${diffMins} ${diffMins === 1 ? 'minuto' : 'minutos'}`;
     return 'Hace un momento';
   } catch (e) {
     return 'Hace unas horas';
   }
 }
 
+function parseDateSafely(dateString?: string): number {
+  if (!dateString) return 0;
+  const parsed = new Date(dateString).getTime();
+  return isNaN(parsed) ? 0 : parsed;
+}
+
 export default async function NewsFeed() {
-  let newsItems: NewsItem[] = [];
+  let allNewsItems: NewsItem[] = [];
+
+  const parser = new Parser({
+    timeout: 5000, // 5 seconds timeout to guarantee fast page loads
+  });
 
   try {
-    const parser = new Parser({
-      timeout: 5000, // 5 seconds timeout to guarantee fast page loads
-    });
-    
-    const feed = await parser.parseURL(
-      'https://servicios.lanacion.com.ar/winformatos/rss/canal/categoria=7793'
+    // Fetch all RSS feeds in parallel, settling them independently
+    const results = await Promise.allSettled(
+      RSS_FEEDS.map(async (feed) => {
+        const data = await parser.parseURL(feed.url);
+        return { feedName: feed.name, items: data.items };
+      })
     );
 
-    if (feed && feed.items) {
-      newsItems = feed.items.slice(0, 4).map((item) => ({
-        title: item.title || 'Noticia sin título',
-        link: item.link || 'https://www.lanacion.com.ar',
-        pubDate: item.pubDate,
-        relativeTime: getRelativeTime(item.pubDate),
-      }));
-    }
+    results.forEach((result) => {
+      if (result.status === 'fulfilled' && result.value.items) {
+        const { feedName, items } = result.value;
+        const feedItems = items.map((item) => ({
+          title: item.title || 'Noticia sin título',
+          link: item.link || '#',
+          pubDate: item.pubDate,
+          relativeTime: getRelativeTime(item.pubDate),
+          sourceName: feedName,
+          timestamp: parseDateSafely(item.pubDate),
+        }));
+        allNewsItems.push(...feedItems);
+      }
+    });
+
   } catch (error) {
-    console.error('Error fetching RSS feed:', error);
-    // Graceful degradation: Use high quality fallback items
-    newsItems = FALLBACK_NEWS;
+    console.error('Critical error processing RSS feeds:', error);
   }
 
-  // Ensure we always have exactly 4 items
-  if (newsItems.length < 4) {
-    newsItems = [...newsItems, ...FALLBACK_NEWS.slice(newsItems.length, 4)];
-  } else if (newsItems.length > 4) {
-    newsItems = newsItems.slice(0, 4);
+  // If we got valid items, sort them by newest first. Otherwise use fallback.
+  if (allNewsItems.length > 0) {
+    allNewsItems.sort((a, b) => b.timestamp - a.timestamp);
+    // Remove items with invalid timestamps if they end up sorting weirdly
+    allNewsItems = allNewsItems.filter(item => item.timestamp > 0);
   }
+
+  // If still empty or filtered to 0, use fallback
+  if (allNewsItems.length === 0) {
+    allNewsItems = FALLBACK_NEWS;
+  }
+
+  // Take exactly top 4
+  const displayItems = allNewsItems.slice(0, 4);
 
   return (
     <div className="w-full bg-zinc-900/40 backdrop-blur-md border border-zinc-800/80 rounded-2xl p-6 md:p-8 shadow-2xl transition-all duration-300 hover:border-cyan-500/20">
@@ -102,11 +135,11 @@ export default async function NewsFeed() {
         <div className="p-2 bg-cyan-950/40 border border-cyan-500/20 rounded-lg">
           <Newspaper className="w-5 h-5 text-cyan-400" />
         </div>
-        <h2 className="text-zinc-100 font-bold tracking-tight text-lg md:text-xl">Noticias</h2>
+        <h2 className="text-zinc-100 font-bold tracking-tight text-lg md:text-xl">Últimas Noticias</h2>
       </div>
 
       <div className="divide-y divide-zinc-850">
-        {newsItems.map((item, index) => (
+        {displayItems.map((item, index) => (
           <a
             key={index}
             href={item.link}
@@ -118,11 +151,16 @@ export default async function NewsFeed() {
               <h3 className="text-zinc-200 text-sm font-medium leading-relaxed group-hover:text-cyan-400 transition-colors duration-200 line-clamp-2 md:line-clamp-1">
                 {item.title}
               </h3>
-              <span className="text-[10px] text-zinc-500 font-medium tracking-wide uppercase mt-1 block">
-                {item.relativeTime}
-              </span>
+              <div className="flex items-center space-x-2 mt-1.5">
+                <span className="text-[10px] text-cyan-500 font-bold tracking-wider uppercase border border-cyan-500/20 bg-cyan-950/30 px-1.5 py-0.5 rounded">
+                  {item.sourceName}
+                </span>
+                <span className="text-[10px] text-zinc-500 font-medium tracking-wide uppercase">
+                  {item.relativeTime}
+                </span>
+              </div>
             </div>
-            <div className="flex items-center space-x-1 text-xs text-zinc-500 group-hover:text-cyan-400 transition-colors duration-200 mt-2 md:mt-0 font-medium shrink-0">
+            <div className="flex items-center space-x-1 text-xs text-zinc-500 group-hover:text-cyan-400 transition-colors duration-200 mt-3 md:mt-0 font-medium shrink-0">
               <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">Leer</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </div>
