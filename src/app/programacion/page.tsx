@@ -3,13 +3,13 @@ import Image from 'next/image';
 import { ArrowLeft, PlayCircle } from 'lucide-react';
 
 const PROGRAMS = [
-  { id: 1, title: 'Cantares Latinoamericanos', image: '/images/cantares.jpg', audio: '/audio/cantares.mp3' },
-  { id: 2, title: 'El Baúl de los recuerdos', image: '/images/baul.jpg', audio: '/audio/baul.mp3' },
-  { id: 3, title: 'Nostalgia Instrumental', image: '/images/instrumental.jpg', audio: '/audio/instrumental.mp3' },
-  { id: 4, title: 'Nostalgia Vallenata', image: '/images/vallenata.jpg', audio: '/audio/vallenata.mp3' },
-  { id: 5, title: 'Joyas Musicales del ayer', image: '/images/joyas.jpg', audio: '/audio/joyas.mp3' },
-  { id: 6, title: 'Bailables del recuerdo', image: '/images/bailables.jpg', audio: '/audio/bailables.mp3' },
-  { id: 7, title: 'El Rincón de Juancho', image: '/images/juancho.jpg', audio: '/audio/juancho.mp3' },
+  { id: 1, title: 'Cantares Latinoamericanos', image: '/images/cantares.jpeg', audio: '/audio/cantares.mpeg' },
+  { id: 2, title: 'El Baúl de los recuerdos', image: '/images/baul.jpeg', audio: '/audio/baul.mpeg' },
+  { id: 3, title: 'Nostalgia Instrumental', image: '/images/instrumental.jpeg', audio: '/audio/instrumental.mpeg' },
+  { id: 4, title: 'Nostalgia Vallenata', image: '/images/vallenata.jpeg', audio: '/audio/vallenata.mpeg' },
+  { id: 5, title: 'Joyas Musicales del ayer', image: '/images/joyas.jpeg', audio: '/audio/joyas.mpeg' },
+  { id: 6, title: 'Bailables del recuerdo', image: '/images/bailables.jpeg', audio: '/audio/bailables.mpeg' },
+  { id: 7, title: 'El Rincón de Juancho', image: '/images/juancho.jpeg', audio: '/audio/juancho.mpeg' },
 ];
 
 export default function Programacion() {
