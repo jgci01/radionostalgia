@@ -1,30 +1,56 @@
 import Parser from 'rss-parser';
-import { Newspaper, ExternalLink } from 'lucide-react';
+import NewsFeedClient from './NewsFeedClient';
 
-interface NewsItem {
+export interface NewsItem {
   title: string;
   link: string;
   pubDate?: string;
   relativeTime: string;
   sourceName: string;
+  region: 'nacional' | 'internacional';
   timestamp: number;
 }
 
-const RSS_FEEDS = [
-  { name: 'La Nación', url: 'https://servicios.lanacion.com.ar/winformatos/rss/canal/categoria=7793' },
-  { name: 'MDZ Online', url: 'https://www.mdzol.com/files/rss/todoslostitulos.xml' },
-  { name: 'Infobae', url: 'https://www.infobae.com/feeds/rss' },
-  { name: 'El Nacional', url: 'http://www.el-nacional.com/rss/' },
-  { name: 'Radio Bío Bío', url: 'https://www.biobiochile.cl/portada/feed/' }
+const RSS_FEEDS: {
+  name: string;
+  url: string;
+  region: 'nacional' | 'internacional';
+}[] = [
+  {
+    name: 'La Nación',
+    url: 'https://servicios.lanacion.com.ar/winformatos/rss/canal/categoria=7793',
+    region: 'nacional',
+  },
+  {
+    name: 'MDZ Online',
+    url: 'https://www.mdzol.com/files/rss/todoslostitulos.xml',
+    region: 'nacional',
+  },
+  {
+    name: 'Infobae',
+    url: 'https://www.infobae.com/feeds/rss',
+    region: 'nacional',
+  },
+  {
+    name: 'El Nacional',
+    url: 'https://www.elnacional.com/feed/',
+    region: 'internacional',
+  },
+  {
+    name: 'Radio Bío Bío',
+    url: 'https://www.biobiochile.cl/portada/feed/',
+    region: 'internacional',
+  },
 ];
 
-// Fallback items in case all RSS feeds fail
+// Fallback items in case RSS feeds fail
 const FALLBACK_NEWS: NewsItem[] = [
   {
     title: 'El auge del vinilo y el coleccionismo de clásicos musicales en la era digital',
     link: 'https://www.lanacion.com.ar',
     relativeTime: 'Hace 2 horas',
     sourceName: 'La Nación',
+    region: 'nacional',
     timestamp: Date.now() - 7200000,
   },
   {
@@ -32,6 +58,7 @@ const FALLBACK_NEWS: NewsItem[] = [
     link: 'https://www.mdzol.com',
     relativeTime: 'Hace 4 horas',
     sourceName: 'MDZ Online',
+    region: 'nacional',
     timestamp: Date.now() - 14400000,
   },
   {
@@ -39,13 +66,15 @@ const FALLBACK_NEWS: NewsItem[] = [
     link: 'https://www.infobae.com',
     relativeTime: 'Hace 6 horas',
     sourceName: 'Infobae',
+    region: 'nacional',
     timestamp: Date.now() - 21600000,
   },
   {
-    title: 'Reportaje: La historia de la radiofonía latinoamericana',
-    link: 'http://www.el-nacional.com',
+    title: 'Reportaje: La historia viva de la radiofonía latinoamericana y sus grandes voces',
+    link: 'https://www.elnacional.com',
     relativeTime: 'Hace 7 horas',
     sourceName: 'El Nacional',
+    region: 'internacional',
     timestamp: Date.now() - 25200000,
   },
   {
@@ -53,6 +82,7 @@ const FALLBACK_NEWS: NewsItem[] = [
     link: 'https://www.biobiochile.cl',
     relativeTime: 'Hace 8 horas',
     sourceName: 'Radio Bío Bío',
+    region: 'internacional',
     timestamp: Date.now() - 28800000,
   },
 ];
@@ -63,10 +93,10 @@ function getRelativeTime(dateString?: string): string {
     const now = new Date();
     const past = new Date(dateString);
     if (isNaN(past.getTime())) return 'Hace unas horas';
-    
+
     const diffMs = now.getTime() - past.getTime();
     if (diffMs < 0) return 'Hace un momento';
-    
+
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffHours / 24);
@@ -75,7 +105,7 @@ function getRelativeTime(dateString?: string): string {
     if (diffHours > 0) return `Hace ${diffHours} ${diffHours === 1 ? 'hora' : 'horas'}`;
     if (diffMins > 0) return `Hace ${diffMins} ${diffMins === 1 ? 'minuto' : 'minutos'}`;
     return 'Hace un momento';
-  } catch (e) {
+  } catch {
     return 'Hace unas horas';
   }
 }
@@ -87,101 +117,73 @@ function parseDateSafely(dateString?: string): number {
 }
 
 export default async function NewsFeed() {
-  let allNewsItems: NewsItem[] = [];
+  let featuredItems: NewsItem[] = [];
+  let allCollectedItems: NewsItem[] = [];
 
   const parser = new Parser({
-    timeout: 5000, // 5 seconds timeout to guarantee fast page loads
-    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+    timeout: 5000,
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    },
   });
 
   try {
-    // Fetch all RSS feeds in parallel, settling them independently
     const results = await Promise.allSettled(
       RSS_FEEDS.map(async (feed) => {
         const data = await parser.parseURL(feed.url);
-        return { feedName: feed.name, items: data.items };
+        return { feedName: feed.name, region: feed.region, items: data.items };
       })
     );
 
     results.forEach((result) => {
       if (result.status === 'fulfilled' && result.value.items) {
-        const { feedName, items } = result.value;
-        const feedItems = items.map((item) => ({
+        const { feedName, region, items } = result.value;
+        const feedItems: NewsItem[] = items.map((item) => ({
           title: item.title || 'Noticia sin título',
           link: item.link || '#',
           pubDate: item.pubDate,
           relativeTime: getRelativeTime(item.pubDate),
           sourceName: feedName,
+          region,
           timestamp: parseDateSafely(item.pubDate),
         }));
-        
-        // Sort items from this specific source by newest first
+
         feedItems.sort((a, b) => b.timestamp - a.timestamp);
-        
-        // Take ONLY the single freshest article from this source
+
         if (feedItems.length > 0) {
-          allNewsItems.push(feedItems[0]);
+          featuredItems.push(feedItems[0]);
+          allCollectedItems.push(...feedItems.slice(0, 3));
         }
       }
     });
-
   } catch (error) {
     console.error('Critical error processing RSS feeds:', error);
   }
 
-  // Sort the final live items by newest first across all sources
-  if (allNewsItems.length > 0) {
-    allNewsItems.sort((a, b) => b.timestamp - a.timestamp);
-    allNewsItems = allNewsItems.filter(item => item.timestamp > 0);
+  if (featuredItems.length > 0) {
+    featuredItems.sort((a, b) => b.timestamp - a.timestamp);
+    featuredItems = featuredItems.filter((item) => item.timestamp > 0);
   }
 
-  // If we couldn't get exactly 5 items (due to offline sources), fill the rest with fallbacks
-  if (allNewsItems.length < 5) {
-    const missingCount = 5 - allNewsItems.length;
-    allNewsItems = [...allNewsItems, ...FALLBACK_NEWS.slice(0, missingCount)];
+  if (allCollectedItems.length > 0) {
+    allCollectedItems.sort((a, b) => b.timestamp - a.timestamp);
+    allCollectedItems = allCollectedItems.filter((item) => item.timestamp > 0);
   }
 
-  // Take exactly 5 items for the UI
-  const displayItems = allNewsItems.slice(0, 5);
+  if (featuredItems.length < 5) {
+    const missingCount = 5 - featuredItems.length;
+    featuredItems = [...featuredItems, ...FALLBACK_NEWS.slice(0, missingCount)];
+  }
+
+  if (allCollectedItems.length < 5) {
+    allCollectedItems = [...allCollectedItems, ...FALLBACK_NEWS];
+  }
 
   return (
-    <div className="w-full bg-zinc-900/40 backdrop-blur-md border border-zinc-800/80 rounded-2xl p-6 md:p-8 shadow-2xl transition-all duration-300 hover:border-cyan-500/20">
-      <div className="flex items-center space-x-3 border-b border-zinc-800/50 pb-4 mb-5">
-        <div className="p-2 bg-cyan-950/40 border border-cyan-500/20 rounded-lg">
-          <Newspaper className="w-5 h-5 text-cyan-400" />
-        </div>
-        <h2 className="text-zinc-100 font-bold tracking-tight text-lg md:text-xl">Últimas Noticias</h2>
-      </div>
-
-      <div className="divide-y divide-zinc-850">
-        {displayItems.map((item, index) => (
-          <a
-            key={index}
-            href={item.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group flex flex-col md:flex-row md:items-center justify-between py-4 first:pt-0 last:pb-0 transition-colors duration-200"
-          >
-            <div className="flex-1 pr-4">
-              <h3 className="text-zinc-200 text-sm font-medium leading-relaxed group-hover:text-cyan-400 transition-colors duration-200 line-clamp-2 md:line-clamp-1">
-                {item.title}
-              </h3>
-              <div className="flex items-center space-x-2 mt-1.5">
-                <span className="text-[10px] text-cyan-500 font-bold tracking-wider uppercase border border-cyan-500/20 bg-cyan-950/30 px-1.5 py-0.5 rounded">
-                  {item.sourceName}
-                </span>
-                <span className="text-[10px] text-zinc-500 font-medium tracking-wide uppercase">
-                  {item.relativeTime}
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center space-x-1 text-xs text-zinc-500 group-hover:text-cyan-400 transition-colors duration-200 mt-3 md:mt-0 font-medium shrink-0">
-              <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">Leer</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </div>
-          </a>
-        ))}
-      </div>
-    </div>
+    <NewsFeedClient
+      featuredItems={featuredItems.slice(0, 5)}
+      allItems={allCollectedItems}
+    />
   );
 }

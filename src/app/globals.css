@@ -38,6 +38,15 @@ body {
   background: #06709F;
 }
 
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Custom keyframes & classes for micro-animations */
 @keyframes pulse-glow {
   0%, 100% {
@@ -50,8 +59,23 @@ body {
   }
 }
 
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .ambient-glow {
   animation: pulse-glow 8s ease-in-out infinite;
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-out forwards;
 }
 
 /* Clean divider color for news feed lines */
