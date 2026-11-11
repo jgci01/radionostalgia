@@ -52,7 +52,7 @@ export default function Player() {
   const [mounted, setMounted] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showSleepMenu, setShowSleepMenu] = useState(false);
-  const [showCasterWidget, setShowCasterWidget] = useState(true);
+  const [showCasterWidget, setShowCasterWidget] = useState(false);
 
   const embedContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -61,6 +61,7 @@ export default function Player() {
     isPlaying,
     isLoading,
     autoplayBlocked,
+    liveTitle,
     currentProgram,
     volume,
     isMuted,
@@ -69,9 +70,9 @@ export default function Player() {
     sleepMinutes,
     sleepRemainingSeconds,
     togglePlay,
-    pauseAudio,
     playLive,
     playAutoDj,
+    notifyExternalCasterClick,
     nextTrack,
     prevTrack,
     seekTo,
@@ -84,7 +85,7 @@ export default function Player() {
     setMounted(true);
   }, []);
 
-  // Re-initialize Caster.fm widget on client-side route navigation & add allow="autoplay" to its iframe
+  // Re-initialize Caster.fm widget when expanded & add allow="autoplay" to its iframe
   useEffect(() => {
     if (!mounted || !showCasterWidget) return;
 
@@ -112,20 +113,20 @@ export default function Player() {
     };
   }, [mounted, showCasterWidget]);
 
-  // Pause global HTML5 audio if user clicks inside the Caster.fm iframe to avoid double audio
+  // Synchronize if user clicks inside the Caster.fm iframe
   useEffect(() => {
     const handleWindowBlur = () => {
       if (
         document.activeElement?.tagName === 'IFRAME' &&
         embedContainerRef.current?.contains(document.activeElement)
       ) {
-        pauseAudio();
+        notifyExternalCasterClick();
       }
     };
 
     window.addEventListener('blur', handleWindowBlur);
     return () => window.removeEventListener('blur', handleWindowBlur);
-  }, [pauseAudio]);
+  }, [notifyExternalCasterClick]);
 
   const handleShare = async () => {
     const shareData = {
@@ -139,7 +140,7 @@ export default function Player() {
         await navigator.share(shareData);
         return;
       } catch {
-        // Fallback to clipboard copy if user cancels or share fails
+        // Fallback to clipboard copy if user cancels
       }
     }
 
@@ -192,7 +193,11 @@ export default function Player() {
               title="Compartir emisora"
               className="p-1.5 rounded-lg bg-zinc-800/60 hover:bg-zinc-800 border border-zinc-700/50 text-zinc-400 hover:text-cyan-400 transition-colors cursor-pointer"
             >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Share2 className="w-3.5 h-3.5" />}
+              {copied ? (
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+              ) : (
+                <Share2 className="w-3.5 h-3.5" />
+              )}
             </button>
 
             <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-emerald-950/40 border border-emerald-500/20">
@@ -240,32 +245,32 @@ export default function Player() {
           {/* Top Row: Program/Stream Info + Equalizer Visualizer */}
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center space-x-3 min-w-0">
-              <div className="relative w-12 h-12 rounded-xl overflow-hidden border border-zinc-700/80 shrink-0">
+              <div className="relative w-12 h-12 rounded-full overflow-hidden border border-cyan-500/30 shrink-0">
                 <Image
                   src={mode === 'live' ? '/logo.png' : currentProgram.image}
                   alt={mode === 'live' ? 'Señal en Vivo' : currentProgram.title}
                   fill
                   sizes="48px"
                   unoptimized
-                  className="object-cover"
+                  className={`object-cover ${isPlaying ? 'animate-spin-slow' : ''}`}
                 />
               </div>
               <div className="min-w-0">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 block">
                   {mode === 'live'
-                    ? 'Transmisión Directa'
+                    ? 'Transmisión Directa en Vivo'
                     : mode === 'autodj'
                     ? `Auto-DJ • ${currentProgram.category}`
                     : `Programa • ${currentProgram.category}`}
                 </span>
                 <h3 className="text-sm font-bold text-zinc-100 truncate">
-                  {mode === 'live' ? 'Estudio Central Mendoza' : currentProgram.title}
+                  {mode === 'live' ? liveTitle : currentProgram.title}
                 </h3>
                 <p className="text-[11px] text-zinc-400 truncate">
                   {autoplayBlocked
-                    ? '🔊 Toca Play o cualquier parte para activar el sonido'
+                    ? '🔊 Toca Play o cualquier parte para activar el volumen'
                     : mode === 'live'
-                    ? 'Sintonía del recuerdo en alta fidelidad'
+                    ? 'Música de los 60, 70, 80 y 90s • Mendoza'
                     : currentProgram.subtitle}
                 </p>
               </div>
@@ -326,12 +331,12 @@ export default function Player() {
               <button
                 type="button"
                 onClick={togglePlay}
-                aria-label={isPlaying ? 'Pausar radio' : 'Reproducir radio'}
+                aria-label={isPlaying && !autoplayBlocked ? 'Pausar radio' : 'Reproducir radio'}
                 className="w-11 h-11 rounded-full bg-cyan-500 hover:bg-cyan-400 text-zinc-950 flex items-center justify-center shadow-lg shadow-cyan-500/25 transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer"
               >
                 {isLoading ? (
                   <span className="w-4 h-4 rounded-full border-2 border-zinc-950 border-t-transparent animate-spin" />
-                ) : isPlaying ? (
+                ) : isPlaying && !autoplayBlocked ? (
                   <Pause className="w-5 h-5 fill-current" />
                 ) : (
                   <Play className="w-5 h-5 fill-current ml-0.5" />
@@ -368,8 +373,8 @@ export default function Player() {
                 </button>
                 <input
                   type="range"
-                  min="0"
-                  max="1"
+                  min={0}
+                  max={1}
                   step="0.05"
                   value={isMuted ? 0 : volume}
                   onChange={(e) => setVolume(parseFloat(e.target.value))}
@@ -432,14 +437,14 @@ export default function Player() {
           </div>
         </div>
 
-        {/* Collapsible Third-party Caster.fm Shoutcast Embed */}
+        {/* Collapsible Secondary Caster.fm Shoutcast Embed */}
         <div className="space-y-2">
           <button
             type="button"
             onClick={() => setShowCasterWidget((prev) => !prev)}
-            className="w-full flex items-center justify-between text-[11px] text-zinc-400 hover:text-zinc-200 px-1 transition-colors cursor-pointer"
+            className="w-full flex items-center justify-between text-[11px] text-zinc-500 hover:text-zinc-300 px-1 transition-colors cursor-pointer"
           >
-            <span>Reproductor Oficial Shoutcast (Caster.fm)</span>
+            <span>Reproductor Alternativo (Caster.fm)</span>
             {showCasterWidget ? (
               <ChevronUp className="w-3.5 h-3.5" />
             ) : (

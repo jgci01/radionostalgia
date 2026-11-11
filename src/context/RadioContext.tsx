@@ -18,6 +18,7 @@ interface RadioContextValue {
   isLoading: boolean;
   autoplayBlocked: boolean;
   liveServerOnline: boolean;
+  liveTitle: string;
   currentProgram: ProgramItem;
   volume: number;
   isMuted: boolean;
@@ -30,6 +31,7 @@ interface RadioContextValue {
   playLive: () => Promise<void>;
   playAutoDj: () => Promise<void>;
   playProgram: (program: ProgramItem) => Promise<void>;
+  notifyExternalCasterClick: () => void;
   nextTrack: () => Promise<void>;
   prevTrack: () => Promise<void>;
   seekTo: (timeSeconds: number) => void;
@@ -38,17 +40,16 @@ interface RadioContextValue {
   setSleepTimer: (minutes: number | null) => void;
 }
 
-const INITIAL_LIVE_URL =
-  'https://sapircast.caster.fm:18243/s7Rhf?token=568f6c35837c77060df6bd2e49416bd3';
+const LIVE_PROXY_URL = '/api/live';
 
 const RadioContext = createContext<RadioContextValue | null>(null);
 
 export function RadioProvider({ children }: { children: React.ReactNode }) {
   const [mode, setMode] = useState<RadioMode>('live');
-  const [liveStreamUrl, setLiveStreamUrl] = useState<string>(INITIAL_LIVE_URL);
-  const [liveServerOnline, setLiveServerOnline] = useState<boolean>(false);
+  const [liveServerOnline, setLiveServerOnline] = useState<boolean>(true);
+  const [liveTitle, setLiveTitle] = useState<string>('Señal en Vivo • Mendoza');
   const [currentProgram, setCurrentProgram] = useState<ProgramItem>(PROGRAMS[0]);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [isPlaying, setIsPlaying] = useState<boolean>(true); // Start spinning vinyl immediately on entry
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState<boolean>(false);
   const [volume, setVolumeState] = useState<number>(0.85);
@@ -61,12 +62,11 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const modeRef = useRef<RadioMode>(mode);
   const currentProgramRef = useRef<ProgramItem>(currentProgram);
-  const liveStreamUrlRef = useRef<string>(liveStreamUrl);
   const hasInitializedRef = useRef<boolean>(false);
+  const waitingForGestureUnmuteRef = useRef<boolean>(false);
 
   modeRef.current = mode;
   currentProgramRef.current = currentProgram;
-  liveStreamUrlRef.current = liveStreamUrl;
 
   const playSource = useCallback(
     async (src: string, nextMode: RadioMode, program?: ProgramItem): Promise<boolean> => {
@@ -82,24 +82,44 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
 
       try {
         setIsLoading(true);
-        if (audio.src !== new URL(src, window.location.origin).href) {
-          audio.src = src;
-          audio.load();
-        }
+        // Add cache-busting query param for live stream so it always connects to the live edge
+        const targetSrc =
+          nextMode === 'live' ? `${LIVE_PROXY_URL}?t=${Date.now()}` : src;
+
+        audio.src = targetSrc;
+        audio.muted = isMuted;
         audio.volume = isMuted ? 0 : volume;
+        audio.load();
+
         await audio.play();
+        waitingForGestureUnmuteRef.current = false;
         setIsPlaying(true);
         setAutoplayBlocked(false);
         setIsLoading(false);
         return true;
       } catch (err) {
-        setIsLoading(false);
         if (err instanceof DOMException && err.name === 'NotAllowedError') {
-          setAutoplayBlocked(true);
-          setIsPlaying(false);
-          return false;
+          // Browser blocked unmuted autoplay on initial load:
+          // Start muted autoplay immediately so the stream connects and vinyl spins right away,
+          // then unmute on the very first click/tap/keypress anywhere on the page.
+          try {
+            audio.muted = true;
+            await audio.play();
+            waitingForGestureUnmuteRef.current = true;
+            setIsPlaying(true);
+            setAutoplayBlocked(true);
+            setIsLoading(false);
+            return false;
+          } catch {
+            waitingForGestureUnmuteRef.current = true;
+            setAutoplayBlocked(true);
+            setIsLoading(false);
+            return false;
+          }
         }
-        // If live stream is currently offline, seamlessly fallback to Auto-DJ 24/7
+
+        setIsLoading(false);
+        // If live stream is offline (503), fallback to Auto-DJ 24/7 so music always plays
         if (nextMode === 'live') {
           const fallbackProgram = currentProgramRef.current || PROGRAMS[0];
           return playSource(fallbackProgram.audio, 'autodj', fallbackProgram);
@@ -111,16 +131,28 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
     [isMuted, volume]
   );
 
-  // Initial mount: check stream status & trigger immediate autoplay
+  // Initial mount: immediately start playing Live Stream ("Señal en Vivo") & spin vinyl
   useEffect(() => {
     if (hasInitializedRef.current) return;
     hasInitializedRef.current = true;
 
-    // Pick a time-based initial program for variety in Auto-DJ
     const hourIndex = new Date().getHours() % PROGRAMS.length;
     const initialProgram = PROGRAMS[hourIndex] || PROGRAMS[0];
     setCurrentProgram(initialProgram);
     currentProgramRef.current = initialProgram;
+
+    // Fetch live metadata in parallel without delaying immediate autoplay
+    fetch('/api/stream')
+      .then((res) => res.json())
+      .then((data) => {
+        if (typeof data?.serverReady === 'boolean') {
+          setLiveServerOnline(data.serverReady);
+        }
+        if (data?.liveTitle) {
+          setLiveTitle(data.liveTitle);
+        }
+      })
+      .catch(() => {});
 
     let unlockCleanup: (() => void) | null = null;
 
@@ -130,22 +162,39 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
       const handleUnlock = async () => {
         const audio = audioRef.current;
         if (!audio) return;
+
         try {
-          setIsLoading(true);
-          await audio.play();
+          audio.muted = false;
+          audio.volume = volume;
+          setIsMuted(false);
+
+          if (audio.paused) {
+            if (!audio.src) {
+              audio.src = `${LIVE_PROXY_URL}?t=${Date.now()}`;
+            }
+            await audio.play();
+          }
+
+          waitingForGestureUnmuteRef.current = false;
           setIsPlaying(true);
           setAutoplayBlocked(false);
           setIsLoading(false);
+
           if (unlockCleanup) {
             unlockCleanup();
             unlockCleanup = null;
           }
         } catch {
-          setIsLoading(false);
+          // Will retry on next direct click
         }
       };
 
-      const events: (keyof DocumentEventMap)[] = ['click', 'touchstart', 'keydown'];
+      const events: (keyof DocumentEventMap)[] = [
+        'pointerdown',
+        'click',
+        'touchstart',
+        'keydown',
+      ];
       events.forEach((evt) =>
         document.addEventListener(evt, handleUnlock, { passive: true })
       );
@@ -155,41 +204,17 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
       };
     };
 
-    const initAutoplay = async () => {
-      try {
-        const res = await fetch('/api/stream');
-        const data = await res.json();
-        if (data?.streamUrl) {
-          setLiveStreamUrl(data.streamUrl);
-          liveStreamUrlRef.current = data.streamUrl;
-        }
-        const isLiveReady = Boolean(data?.serverReady);
-        setLiveServerOnline(isLiveReady);
-
-        if (isLiveReady) {
-          const ok = await playSource(
-            data?.streamUrl || INITIAL_LIVE_URL,
-            'live',
-            initialProgram
-          );
-          if (!ok) registerFirstInteractionUnlock();
-        } else {
-          // Live encoder is offline -> start Auto-DJ 24/7 immediately so the radio always autoplays!
-          const ok = await playSource(initialProgram.audio, 'autodj', initialProgram);
-          if (!ok) registerFirstInteractionUnlock();
-        }
-      } catch {
-        const ok = await playSource(initialProgram.audio, 'autodj', initialProgram);
-        if (!ok) registerFirstInteractionUnlock();
+    // Start Live Stream immediately on page open
+    playSource(LIVE_PROXY_URL, 'live', initialProgram).then((ok) => {
+      if (!ok) {
+        registerFirstInteractionUnlock();
       }
-    };
-
-    initAutoplay();
+    });
 
     return () => {
       if (unlockCleanup) unlockCleanup();
     };
-  }, [playSource]);
+  }, [playSource, volume]);
 
   const pauseAudio = useCallback(() => {
     if (audioRef.current && !audioRef.current.paused) {
@@ -198,42 +223,69 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
     setIsPlaying(false);
   }, []);
 
+  // When the user interacts directly with the embedded Caster.fm iframe player:
+  // pause our internal HTML5 audio to avoid double audio, but keep mode='live' and vinyl spinning
+  const notifyExternalCasterClick = useCallback(() => {
+    if (audioRef.current && !audioRef.current.paused) {
+      audioRef.current.pause();
+    }
+    setMode('live');
+    setIsPlaying(true);
+    setAutoplayBlocked(false);
+  }, []);
+
   const togglePlay = useCallback(async () => {
     const audio = audioRef.current;
     if (!audio) return;
 
-    if (isPlaying) {
+    // If audio was playing muted due to browser autoplay policy, unmute it on first Play click
+    if (waitingForGestureUnmuteRef.current || autoplayBlocked) {
+      audio.muted = false;
+      audio.volume = volume;
+      setIsMuted(false);
+      waitingForGestureUnmuteRef.current = false;
+      setAutoplayBlocked(false);
+      if (audio.paused) {
+        await playSource(
+          modeRef.current === 'live' ? LIVE_PROXY_URL : currentProgramRef.current.audio,
+          modeRef.current
+        );
+      } else {
+        setIsPlaying(true);
+      }
+      return;
+    }
+
+    if (isPlaying && !audio.paused) {
       audio.pause();
       setIsPlaying(false);
       return;
     }
 
     if (modeRef.current === 'live') {
-      await playSource(liveStreamUrlRef.current, 'live');
+      await playSource(LIVE_PROXY_URL, 'live');
     } else {
-      try {
-        setIsLoading(true);
-        if (!audio.src) {
-          audio.src = currentProgramRef.current.audio;
-        }
-        await audio.play();
-        setIsPlaying(true);
-        setAutoplayBlocked(false);
-        setIsLoading(false);
-      } catch (err) {
-        setIsLoading(false);
-        if (err instanceof DOMException && err.name === 'NotAllowedError') {
-          setAutoplayBlocked(true);
-        }
-      }
+      await playSource(currentProgramRef.current.audio, modeRef.current, currentProgramRef.current);
     }
-  }, [isPlaying, playSource]);
+  }, [autoplayBlocked, isPlaying, playSource, volume]);
 
   const playLive = useCallback(async () => {
-    await playSource(liveStreamUrlRef.current, 'live');
+    const audio = audioRef.current;
+    if (audio) {
+      audio.muted = false;
+      setIsMuted(false);
+      waitingForGestureUnmuteRef.current = false;
+    }
+    await playSource(LIVE_PROXY_URL, 'live');
   }, [playSource]);
 
   const playAutoDj = useCallback(async () => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.muted = false;
+      setIsMuted(false);
+      waitingForGestureUnmuteRef.current = false;
+    }
     const prog = currentProgramRef.current || PROGRAMS[0];
     await playSource(prog.audio, 'autodj', prog);
   }, [playSource]);
@@ -241,14 +293,18 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
   const playProgram = useCallback(
     async (program: ProgramItem) => {
       const audio = audioRef.current;
-      // If clicking the exact same program that's already loaded in program/autodj mode, toggle play/pause
+      if (audio) {
+        audio.muted = false;
+        setIsMuted(false);
+        waitingForGestureUnmuteRef.current = false;
+      }
       if (
         audio &&
         (modeRef.current === 'program' || modeRef.current === 'autodj') &&
         currentProgramRef.current.id === program.id &&
         audio.src.endsWith(program.audio)
       ) {
-        if (isPlaying) {
+        if (isPlaying && !audio.paused) {
           audio.pause();
           setIsPlaying(false);
         } else {
@@ -290,6 +346,7 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
     setVolumeState(clamped);
     setIsMuted(clamped === 0);
     if (audioRef.current) {
+      audioRef.current.muted = clamped === 0;
       audioRef.current.volume = clamped;
     }
   }, []);
@@ -298,6 +355,7 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
     setIsMuted((prev) => {
       const next = !prev;
       if (audioRef.current) {
+        audioRef.current.muted = next;
         audioRef.current.volume = next ? 0 : volume;
       }
       return next;
@@ -332,7 +390,7 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
 
     const title =
       mode === 'live'
-        ? 'Señal en Vivo • Radio Nostalgia Digital'
+        ? `${liveTitle} • Radio Nostalgia Digital`
         : currentProgram.title;
     const artist =
       mode === 'live'
@@ -345,9 +403,7 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
         title,
         artist,
         album: 'Radio Nostalgia Digital',
-        artwork: [
-          { src: artworkUrl, sizes: '512x512', type: 'image/png' },
-        ],
+        artwork: [{ src: artworkUrl, sizes: '512x512', type: 'image/png' }],
       });
 
       navigator.mediaSession.setActionHandler('play', () => {
@@ -365,7 +421,7 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Ignore unsupported mediaSession actions on older browsers
     }
-  }, [mode, currentProgram, togglePlay, pauseAudio, nextTrack, prevTrack]);
+  }, [mode, liveTitle, currentProgram, togglePlay, pauseAudio, nextTrack, prevTrack]);
 
   return (
     <RadioContext.Provider
@@ -375,6 +431,7 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         autoplayBlocked,
         liveServerOnline,
+        liveTitle,
         currentProgram,
         volume,
         isMuted,
@@ -387,6 +444,7 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
         playLive,
         playAutoDj,
         playProgram,
+        notifyExternalCasterClick,
         nextTrack,
         prevTrack,
         seekTo,
@@ -400,12 +458,14 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
       <audio
         ref={audioRef}
         preload="auto"
+        playsInline
         onPlay={() => {
           setIsPlaying(true);
-          setAutoplayBlocked(false);
           setIsLoading(false);
         }}
-        onPause={() => setIsPlaying(false)}
+        onPause={() => {
+          setIsPlaying(false);
+        }}
         onWaiting={() => setIsLoading(true)}
         onPlaying={() => {
           setIsLoading(false);
@@ -419,13 +479,17 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
           setDuration(Number.isFinite(dur) ? dur : 0);
         }}
         onEnded={() => {
-          // Continuously advance to next program in Auto-DJ or Program mode
-          nextTrack();
+          if (modeRef.current === 'live') {
+            // Reconnect automatically if live stream chunk ends
+            playSource(LIVE_PROXY_URL, 'live');
+          } else {
+            nextTrack();
+          }
         }}
         onError={() => {
           setIsLoading(false);
           if (modeRef.current === 'live') {
-            // Live stream is offline -> seamlessly switch to Auto-DJ 24/7
+            // If live stream is offline, fallback seamlessly to Auto-DJ 24/7
             const fallback = currentProgramRef.current || PROGRAMS[0];
             playSource(fallback.audio, 'autodj', fallback);
           } else {
